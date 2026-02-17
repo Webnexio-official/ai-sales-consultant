@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AI Sales Consultant</title>
+
+  <style>
+  .ai-msg {
+    color: #0066ff;
+    margin-bottom: 8px;
+  }
+
+  .user-msg {
+    margin-bottom: 8px;
+  }
+
+  .typing {
+    font-style: italic;
+    color: gray;
+    animation: blink 1s infinite;
+  }
+
+  @keyframes blink {
+    0% { opacity: 0.2; }
+    50% { opacity: 1; }
+    100% { opacity: 0.2; }
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #ccc;
+    border-top: 2px solid #0066ff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-left: 6px;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+</style>
+
+</head>
+
+<body style="font-family: Arial; padding:40px">
+
+<h2>Talk to our AI Consultant</h2>
+
+<div style="
+  width:400px;
+  height:500px;
+  border:1px solid #ccc;
+  padding:15px;
+  overflow:auto;
+" id="chatBox"></div>
+
+<br>
+
+<div id="chatInput" style="display:none;">
+  <input id="msg" placeholder="Type your message..." style="width:300px;">
+  <button onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+
+let sessionId = localStorage.getItem("session_id");
+let leadData = JSON.parse(localStorage.getItem("lead_data"));
+
+const chatBox = document.getElementById("chatBox");
+const chatInput = document.getElementById("chatInput");
+
+window.onload = async function () {
+
+  if (!leadData) {
+    showLeadForm();
+  } else {
+    startChat();
+    loadHistory();
+  }
+
+};
+
+function showLeadForm() {
+
+  chatBox.innerHTML = `
+    <div>
+      <b>AI:</b> 👋 Before we begin, tell us about your business:
+      <br><br>
+
+      <input id="lead_name" placeholder="Your Name" style="width:100%; margin-bottom:8px;"><br>
+      <input id="lead_company" placeholder="Company Name" style="width:100%; margin-bottom:8px;"><br>
+      <input id="lead_website" placeholder="Company Website" style="width:100%; margin-bottom:8px;"><br>
+      <input id="lead_email" placeholder="Work Email" style="width:100%; margin-bottom:8px;"><br>
+
+      <button onclick="submitLeadForm()">Start Consultation</button>
+    </div>
+  `;
+}
+
+async function submitLeadForm() {
+
+  const name = document.getElementById("lead_name").value.trim();
+  const company = document.getElementById("lead_company").value.trim();
+  const website = document.getElementById("lead_website").value.trim();
+  const email = document.getElementById("lead_email").value.trim();
+
+  if (!name || !company || !email) {
+    alert("Please fill required fields.");
+    return;
+  }
+
+  try {
+
+    const response = await fetch("http://localhost:3001/create-lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        email,
+        company_name: company,
+        website
+      })
+    });
+
+    const data = await response.json();
+    console.log("Lead created:", data);
+
+    leadData = { name, company, website, email };
+    localStorage.setItem("lead_data", JSON.stringify(leadData));
+
+    chatBox.innerHTML = `
+      <div style="color:#0066ff;">
+        <b>AI:</b> Great ${name}! Let's explore how we can help ${company}.
+      </div>
+    `;
+
+    startChat();
+
+  } catch (err) {
+    alert("Failed to create lead.");
+  }
+}
+
+
+function startChat() {
+
+  chatInput.style.display = "block";
+
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    localStorage.setItem("session_id", sessionId);
+  }
+}
+
+async function loadHistory() {
+
+  if (!sessionId) return;
+
+  try {
+    const response = await fetch(
+      `http://localhost:3001/history/${sessionId}`
+    );
+
+    const data = await response.json();
+
+    if (data.messages && data.messages.length > 0) {
+
+      chatBox.innerHTML = "";
+
+      data.messages.forEach(msg => {
+        if (msg.role === "user") {
+          chatBox.innerHTML += `<div><b>You:</b> ${msg.content}</div>`;
+        } else {
+          chatBox.innerHTML += `<div style="color:#0066ff;"><b>AI:</b> ${msg.content}</div>`;
+        }
+      });
+
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+  } catch (err) {
+    console.log("History load failed");
+  }
+}
+
+async function sendMessage() {
+
+  const input = document.getElementById("msg");
+  const message = input.value.trim();
+  if (!message) return;
+
+  chatBox.innerHTML += `<div class="user-msg"><b>You:</b> ${message}</div>`;
+  input.value = "";
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  // 🔵 Show loading spinner
+  const loadingId = "loading-" + Date.now();
+  chatBox.innerHTML += `
+    <div id="${loadingId}" class="ai-msg">
+      <b>AI:</b> Thinking<span class="spinner"></span>
+    </div>
+  `;
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  try {
+
+    const response = await fetch("http://localhost:3001/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        session_id: sessionId,
+        email: leadData.email,
+        name: leadData.name,
+        company: leadData.company,
+        website: leadData.website
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.session_id) {
+      sessionId = data.session_id;
+      localStorage.setItem("session_id", sessionId);
+    }
+
+    // 🔴 Remove spinner
+    document.getElementById(loadingId).remove();
+
+    // 🟢 Add typing animation
+    typeAIMessage(data.reply);
+
+  } catch (error) {
+
+    document.getElementById(loadingId).remove();
+
+    chatBox.innerHTML += `
+      <div class="ai-msg" style="color:red;">
+        <b>AI:</b> Server error.
+      </div>
+    `;
+  }
+}
+function typeAIMessage(text) {
+
+  const msgDiv = document.createElement("div");
+  msgDiv.className = "ai-msg";
+  msgDiv.innerHTML = "<b>AI:</b> ";
+  chatBox.appendChild(msgDiv);
+
+  let i = 0;
+
+  function typing() {
+    if (i < text.length) {
+      msgDiv.innerHTML += text.charAt(i);
+      i++;
+      chatBox.scrollTop = chatBox.scrollHeight;
+      setTimeout(typing, 15); // speed control
+    }
+  }
+
+  typing();
+}
+
+
+</script>
+</body>
+</html>
