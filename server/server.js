@@ -18,10 +18,14 @@ const supabase = createClient(
 
 /* ---------------- EXPRESS ---------------- */
 const app = express();
-app.use(cors({
-  origin: ["https://webnexio.in"],
+  app.use(cors({
+  origin: [
+    "https://webnexio.in",
+    "https://www.webnexio.in"
+  ],
   methods: ["GET", "POST"]
 }));
+
 
 /* ---------------- GEMINI ---------------- */
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
