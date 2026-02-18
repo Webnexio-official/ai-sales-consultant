@@ -164,8 +164,8 @@ app.post("/chat", async (req, res) => {
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
       generationConfig: {
-        maxOutputTokens: 350,
-        temperature: 0.6
+        maxOutputTokens: 400,
+        temperature: 0.4
       }
     });
 
@@ -189,12 +189,17 @@ User: ${message}
         )
       ]);
 
-      reply = result?.response?.text()?.trim() || reply;
+     const text = result?.response?.text()?.trim();
 
-    } catch (aiError) {
-      console.log("Gemini error:", aiError.message);
-    }
+  if (text && !text.endsWith(".")) {
+    reply = text + ".";
+  } else {
+    reply = text || reply;
+  }
 
+} catch (aiError) {
+  console.log("Gemini error:", aiError.message);
+}
     /* ---------------- SAVE AI MESSAGE ---------------- */
     await supabase.from("messages").insert([
       {
