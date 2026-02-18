@@ -185,30 +185,48 @@ User: ${message}
 /* =========================================================
    HISTORY
 ========================================================= */
+
+
+/* =========================================================
+   HISTORY
+========================================================= */
 app.get("/history/:session_id", async (req, res) => {
   try {
-    const { data: conversation } = await supabase
+    const { session_id } = req.params;
+
+    if (!session_id) {
+      return res.json({ messages: [] });
+    }
+
+    // Get conversation safely
+    const { data: conversation, error: convoError } = await supabase
       .from("conversations")
       .select("id")
-      .eq("session_id", req.params.session_id)
-      .single();
+      .eq("session_id", session_id)
+      .maybeSingle();
 
-    if (!conversation) return res.json({ messages: [] });
+    if (convoError || !conversation) {
+      return res.json({ messages: [] });
+    }
 
-    const { data: messages } = await supabase
+    // Get messages
+    const { data: messages, error: msgError } = await supabase
       .from("messages")
       .select("role, content")
       .eq("conversation_id", conversation.id)
       .order("created_at", { ascending: true });
 
-    res.json({ messages });
+    if (msgError) {
+      return res.json({ messages: [] });
+    }
+
+    res.json({ messages: messages || [] });
 
   } catch (err) {
     console.log("History error:", err);
     res.json({ messages: [] });
   }
 });
-
 
 
 /* =========================================================
