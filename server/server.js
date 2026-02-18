@@ -110,31 +110,48 @@ app.post("/create-lead", async (req, res) => {
 ========================================================= */
 app.post("/chat", async (req, res) => {
   try {
+
+    /* ---------------- VALIDATION ---------------- */
+    if (!req.body || !req.body.message) {
+      return res.status(400).json({ reply: "Invalid request." });
+    }
+
     let { message, session_id } = req.body;
 
     if (!session_id) {
-  session_id = crypto.randomUUID();
-}
+      session_id = crypto.randomUUID();
+    }
 
-// Ensure conversation exists
-let { data: conversation } = await supabase
-  .from("conversations")
-  .select("id")
-  .eq("session_id", session_id)
-  .single();
+    /* ---------------- ENSURE CONVERSATION ---------------- */
+    let { data: conversation, error: convoError } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("session_id", session_id)
+      .maybeSingle();
 
-if (!conversation) {
-  const { data: newConversation } = await supabase
-    .from("conversations")
-    .insert([{ session_id }])
-    .select()
-    .single();
+    if (convoError) {
+      console.log("Conversation fetch error:", convoError);
+      return res.status(500).json({ reply: "Database error." });
+    }
 
-  conversation = newConversation;
-}
+    if (!conversation) {
+      const { data: newConversation, error: insertError } = await supabase
+        .from("conversations")
+        .insert([{ session_id }])
+        .select()
+        .single();
 
-const conversationId = conversation.id;
+      if (insertError || !newConversation) {
+        console.log("Conversation insert error:", insertError);
+        return res.status(500).json({ reply: "Database error." });
+      }
 
+      conversation = newConversation;
+    }
+
+    const conversationId = conversation.id;
+
+    /* ---------------- SAVE USER MESSAGE ---------------- */
     await supabase.from("messages").insert([
       {
         conversation_id: conversationId,
@@ -143,27 +160,42 @@ const conversationId = conversation.id;
       }
     ]);
 
+    /* ---------------- AI GENERATION ---------------- */
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
       generationConfig: {
-        maxOutputTokens: 300,
+        maxOutputTokens: 350,
         temperature: 0.6
       }
     });
 
-    const result = await model.generateContent(`
-You are a professional AI Sales Assistant.
+    let reply = "Sorry, something went wrong. Please try again.";
 
-Keep answers:
-- Under 80 words
-- Maximum 3 sentences whenever possible
-- Clear and direct
+    try {
+      const result = await Promise.race([
+        model.generateContent(`
+You are a professional AI Automation consultant.
+
+Rules:
+- Start with a short greeting.
+- Be clear and complete.
+- Keep it concise (2–4 sentences).
+- If unclear, ask one clarifying question.
 
 User: ${message}
-    `);
+        `),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("AI timeout")), 12000)
+        )
+      ]);
 
-    const reply = result.response.text();
+      reply = result?.response?.text()?.trim() || reply;
 
+    } catch (aiError) {
+      console.log("Gemini error:", aiError.message);
+    }
+
+    /* ---------------- SAVE AI MESSAGE ---------------- */
     await supabase.from("messages").insert([
       {
         conversation_id: conversationId,
@@ -172,14 +204,14 @@ User: ${message}
       }
     ]);
 
-    res.json({ reply, session_id });
+    /* ---------------- RESPONSE ---------------- */
+    return res.json({ reply, session_id });
 
   } catch (err) {
     console.log("CHAT ERROR:", err);
-    res.status(500).json({ reply: "AI error" });
+    return res.status(500).json({ reply: "AI error" });
   }
 });
-
 
 
 /* =========================================================
