@@ -146,8 +146,8 @@ const conversationId = conversation.id;
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
       generationConfig: {
-        maxOutputTokens: 150,
-        temperature: 0.4
+        maxOutputTokens: 300,
+        temperature: 0.6
       }
     });
 
@@ -156,7 +156,7 @@ You are a professional AI Sales Assistant.
 
 Keep answers:
 - Under 80 words
-- Maximum 3 sentences
+- Maximum 3 sentences whenever possible
 - Clear and direct
 
 User: ${message}
