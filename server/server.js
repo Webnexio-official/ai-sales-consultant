@@ -113,17 +113,27 @@ app.post("/chat", async (req, res) => {
     let { message, session_id } = req.body;
 
     if (!session_id) {
-      session_id = crypto.randomUUID();
-      await supabase.from("conversations").insert([{ session_id }]);
-    }
+  session_id = crypto.randomUUID();
+}
 
-    const { data: conversation } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("session_id", session_id)
-      .single();
+// Ensure conversation exists
+let { data: conversation } = await supabase
+  .from("conversations")
+  .select("id")
+  .eq("session_id", session_id)
+  .single();
 
-    const conversationId = conversation.id;
+if (!conversation) {
+  const { data: newConversation } = await supabase
+    .from("conversations")
+    .insert([{ session_id }])
+    .select()
+    .single();
+
+  conversation = newConversation;
+}
+
+const conversationId = conversation.id;
 
     await supabase.from("messages").insert([
       {
