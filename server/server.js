@@ -18,7 +18,10 @@ const supabase = createClient(
 
 /* ---------------- EXPRESS ---------------- */
 const app = express();
-  app.use(cors({
+
+app.use(express.json());
+
+app.use(cors({
   origin: [
     "https://webnexio.in",
     "https://www.webnexio.in"
